@@ -421,6 +421,12 @@ void Renderer::Impl::render(const UpdateParameters& updateParameters) {
             color = backgroundColor;
         }
         parameters.renderPass = parameters.encoder->createRenderPass("main buffer", { parameters.backend.getDefaultRenderable(), color, 1, 0 });
+
+        vec4 viewport = parameters.state.getViewport();
+        // Viewport Y is with top left origin, transform to bottom left.
+        double bottomLeftOriginY = parameters.state.getSize().height - viewport[3] - viewport[1];
+        parameters.encoder->setViewport(viewport[0] * pixelRatio, bottomLeftOriginY * pixelRatio,
+                                        viewport[2] * pixelRatio, viewport[3] * pixelRatio);
     }
 
     // Actually render the layers
