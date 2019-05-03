@@ -53,6 +53,7 @@ public:
     void removeRequestor(ImageRequestor&);
     void notifyIfMissingImageAdded();
     void reduceMemoryUse();
+    void reduceMemoryUseIfCacheSizeExceedsLimit();
 
     ImageVersionMap updatedImageVersions;
 
@@ -66,10 +67,11 @@ private:
     std::map<ImageRequestor*, ImageRequestPair> requestors;
     struct MissingImageRequestPair {
         ImageRequestPair pair;
-        unsigned int callbacksRemaining;
+        std::size_t callbacksRemaining;
     };
     std::map<ImageRequestor*, MissingImageRequestPair> missingImageRequestors;
     std::map<std::string, std::set<ImageRequestor*>> requestedImages;
+    std::size_t requestedImagesCacheSize = 0ul;
     ImageMap images;
 
     ImageManagerObserver* observer = nullptr;
