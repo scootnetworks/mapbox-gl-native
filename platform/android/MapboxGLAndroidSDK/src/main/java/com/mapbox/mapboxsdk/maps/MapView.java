@@ -798,6 +798,33 @@ public class MapView extends FrameLayout implements NativeMapView.ViewCallback {
   }
 
   /**
+   * Set a callback that's invoked when map needs to release unused image resources.
+   *
+   * A callback will be called only for unused images that were provided by the client via
+   * {@link OnStyleImageMissingListener#onStyleImageMissing(String)} listener interface.
+   *
+   * By default, platform will remove unused images from the style. By adding listener, default
+   * behavior can be overridden and client can control whether to release unused resources.
+   *
+   * @param listener The callback that's invoked when map needs to release unused image resources
+   */
+  public void addOnRemoveUnusedStyleImagesListener(@NonNull OnRemoveUnusedStyleImagesListener listener) {
+    mapChangeReceiver.addOnRemoveUnusedStyleImagesListener(listener);
+  }
+
+  /**
+   * Removes a callback that's invoked when map needs to release unused image resources.
+   *
+   * When all listeners are removed, platform will fallback to default behavior, which is to remove
+   * unused images from the style.
+   *
+   * @param listener The callback that's invoked when map needs to release unused image resources
+   */
+  public void removeOnRemoveUnusedStyleImagesListener(@NonNull OnRemoveUnusedStyleImagesListener listener) {
+    mapChangeReceiver.removeOnRemoveUnusedStyleImagesListener(listener);
+  }
+
+  /**
    * Interface definition for a callback to be invoked when the camera will change.
    * <p>
    * {@link MapView#addOnCameraWillChangeListener(OnCameraWillChangeListener)}
@@ -988,6 +1015,21 @@ public class MapView extends FrameLayout implements NativeMapView.ViewCallback {
      * @param id the id of the icon that is missing
      */
     void onStyleImageMissing(@NonNull String id);
+  }
+
+  /**
+   * Interface definition for a callback to be invoked with a list of unused image identifiers.
+   * <p>
+   * {@link MapView#addOnRemoveUnusedStyleImagesListener(OnRemoveUnusedStyleImagesListener)}
+   * </p>
+   */
+  public interface OnRemoveUnusedStyleImagesListener {
+    /**
+     * Called when the map needs to release unused image resources.
+     *
+     * @param ids list of image identifiers that are not used by the map and can be removed from the style.
+     */
+    void onRemoveUnusedStyleImages(@NonNull String[] ids);
   }
 
   /**
