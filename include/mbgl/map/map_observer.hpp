@@ -48,6 +48,9 @@ public:
     virtual void onSourceChanged(style::Source&) {}
     virtual void onDidBecomeIdle() {}
     virtual void onStyleImageMissing(const std::string&) {}
+    // Implementer of this API should return true if notification about unused images
+    // was handled, false otherwise.
+    virtual bool onRemoveUnusedStyleImages(std::vector<std::string>) { return false; }
 };
 
 } // namespace mbgl
