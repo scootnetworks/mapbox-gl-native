@@ -196,12 +196,12 @@ void LineBucket::addGeometry(const GeometryCoordinates& coordinates, const Geome
         // Calculate the normal towards the next vertex in this line. In case
         // there is no next vertex, pretend that the line is continuing straight,
         // meaning that we are just using the previous normal.
-        nextNormal = nextCoordinate ? util::perp(util::unit(convertPoint<double>(*nextCoordinate - *currentCoordinate)))
+        nextNormal = nextCoordinate && currentCoordinate ? util::perp(util::unit(convertPoint<double>(*nextCoordinate - *currentCoordinate)))
                                 : prevNormal;
 
         // If we still don't have a previous normal, this is the beginning of a
         // non-closed line, so we're doing a straight "join".
-        if (!prevNormal) {
+        if (!prevNormal && nextNormal) {
             prevNormal = *nextNormal;
         }
 
@@ -211,6 +211,7 @@ void LineBucket::addGeometry(const GeometryCoordinates& coordinates, const Geome
         // prevNormal + nextNormal = (0, 0), its magnitude is 0, so the unit vector would be
         // undefined. In that case, we're keeping the joinNormal at (0, 0), so that the cosHalfAngle
         // below will also become 0 and miterLength will become Infinity.
+        if (!prevNormal || !nextNormal) continue;
         Point<double> joinNormal = *prevNormal + *nextNormal;
         if (joinNormal.x != 0 || joinNormal.y != 0) {
             joinNormal = util::unit(joinNormal);
@@ -235,7 +236,7 @@ void LineBucket::addGeometry(const GeometryCoordinates& coordinates, const Geome
 
         const bool isSharpCorner = cosHalfAngle < COS_HALF_SHARP_CORNER && prevCoordinate && nextCoordinate;
 
-        if (isSharpCorner && i > first) {
+        if (currentCoordinate && prevCoordinate && prevNormal && isSharpCorner && i > first) {
             const auto prevSegmentLength = util::dist<double>(*currentCoordinate, *prevCoordinate);
             if (prevSegmentLength > 2.0 * sharpCornerOffset) {
                 GeometryCoordinate newPrevVertex = *currentCoordinate - convertPoint<int16_t>(util::round(convertPoint<double>(*currentCoordinate - *prevCoordinate) * (sharpCornerOffset / prevSegmentLength)));
@@ -279,10 +280,10 @@ void LineBucket::addGeometry(const GeometryCoordinates& coordinates, const Geome
         }
 
         // Calculate how far along the line the currentVertex is
-        if (prevCoordinate)
+        if (prevCoordinate && currentCoordinate)
             distance += util::dist<double>(*currentCoordinate, *prevCoordinate);
 
-        if (middleVertex && currentJoin == LineJoinType::Miter) {
+        if (middleVertex && currentCoordinate && currentJoin == LineJoinType::Miter) {
             joinNormal = joinNormal * miterLength;
             addCurrentVertex(*currentCoordinate, distance, joinNormal, 0, 0, false, startVertex,
                              triangleStore, lineDistances);
@@ -290,21 +291,23 @@ void LineBucket::addGeometry(const GeometryCoordinates& coordinates, const Geome
         } else if (middleVertex && currentJoin == LineJoinType::FlipBevel) {
             // miter is too big, flip the direction to make a beveled join
 
-            if (miterLength > 100) {
+            if (nextNormal && miterLength > 100) {
                 // Almost parallel lines
                 joinNormal = *nextNormal * -1.0;
-            } else {
+            } else if (prevNormal && nextNormal) {
                 const double direction = prevNormal->x * nextNormal->y - prevNormal->y * nextNormal->x > 0 ? -1 : 1;
                 const double bevelLength = miterLength * util::mag(*prevNormal + *nextNormal) /
                                           util::mag(*prevNormal - *nextNormal);
                 joinNormal = util::perp(joinNormal) * bevelLength * direction;
             }
 
-            addCurrentVertex(*currentCoordinate, distance, joinNormal, 0, 0, false, startVertex,
-                             triangleStore, lineDistances);
+            if (currentCoordinate) {
+                addCurrentVertex(*currentCoordinate, distance, joinNormal, 0, 0, false, startVertex,
+                                triangleStore, lineDistances);
 
-            addCurrentVertex(*currentCoordinate, distance, joinNormal * -1.0, 0, 0, false, startVertex,
-                             triangleStore, lineDistances);
+                addCurrentVertex(*currentCoordinate, distance, joinNormal * -1.0, 0, 0, false, startVertex,
+                                triangleStore, lineDistances);
+            }
         } else if (middleVertex && (currentJoin == LineJoinType::Bevel || currentJoin == LineJoinType::FakeRound)) {
             const bool lineTurnsLeft = (prevNormal->x * nextNormal->y - prevNormal->y * nextNormal->x) > 0;
             const float offset = -std::sqrt(miterLength * miterLength - 1);
@@ -320,12 +323,12 @@ void LineBucket::addGeometry(const GeometryCoordinates& coordinates, const Geome
             }
 
             // Close previous segement with bevel
-            if (!startOfLine) {
+            if (prevNormal && currentCoordinate && !startOfLine) {
                 addCurrentVertex(*currentCoordinate, distance, *prevNormal, offsetA, offsetB, false,
                                  startVertex, triangleStore, lineDistances);
             }
 
-            if (currentJoin == LineJoinType::FakeRound) {
+            if (nextNormal && prevNormal && currentCoordinate && currentJoin == LineJoinType::FakeRound) {
                 // The join angle is sharp enough that a round join would be visible.
                 // Bevel joins fill the gap between segments with a single pie slice triangle.
                 // Create a round join by adding multiple pie slices. The join isn't actually round, but
@@ -349,26 +352,26 @@ void LineBucket::addGeometry(const GeometryCoordinates& coordinates, const Geome
             }
 
             // Start next segment
-            if (nextCoordinate) {
+            if (nextCoordinate && currentCoordinate && nextNormal) {
                 addCurrentVertex(*currentCoordinate, distance, *nextNormal, -offsetA, -offsetB,
                                  false, startVertex, triangleStore, lineDistances);
             }
 
         } else if (!middleVertex && currentCap == LineCapType::Butt) {
-            if (!startOfLine) {
+            if (currentCoordinate && prevNormal && !startOfLine) {
                 // Close previous segment with a butt
                 addCurrentVertex(*currentCoordinate, distance, *prevNormal, 0, 0, false,
                                  startVertex, triangleStore, lineDistances);
             }
 
             // Start next segment with a butt
-            if (nextCoordinate) {
+            if (nextCoordinate && currentCoordinate && nextNormal) {
                 addCurrentVertex(*currentCoordinate, distance, *nextNormal, 0, 0, false,
                                  startVertex, triangleStore, lineDistances);
             }
 
         } else if (!middleVertex && currentCap == LineCapType::Square) {
-            if (!startOfLine) {
+            if (currentCoordinate && prevNormal && !startOfLine) {
                 // Close previous segment with a square cap
                 addCurrentVertex(*currentCoordinate, distance, *prevNormal, 1, 1, false,
                                  startVertex, triangleStore, lineDistances);
@@ -378,13 +381,13 @@ void LineBucket::addGeometry(const GeometryCoordinates& coordinates, const Geome
             }
 
             // Start next segment
-            if (nextCoordinate) {
+            if (currentCoordinate && nextNormal && nextCoordinate) {
                 addCurrentVertex(*currentCoordinate, distance, *nextNormal, -1, -1, false,
                                  startVertex, triangleStore, lineDistances);
             }
 
         } else if (middleVertex ? currentJoin == LineJoinType::Round : currentCap == LineCapType::Round) {
-            if (!startOfLine) {
+            if (currentCoordinate && prevNormal && !startOfLine) {
                 // Close previous segment with a butt
                 addCurrentVertex(*currentCoordinate, distance, *prevNormal, 0, 0, false,
                                  startVertex, triangleStore, lineDistances);
@@ -398,7 +401,7 @@ void LineBucket::addGeometry(const GeometryCoordinates& coordinates, const Geome
             }
 
             // Start next segment with a butt
-            if (nextCoordinate) {
+            if (currentCoordinate && nextNormal && nextCoordinate) {
                 // Add round cap before first segment
                 addCurrentVertex(*currentCoordinate, distance, *nextNormal, -1, -1, true,
                                  startVertex, triangleStore, lineDistances);
@@ -408,7 +411,7 @@ void LineBucket::addGeometry(const GeometryCoordinates& coordinates, const Geome
             }
         }
 
-        if (isSharpCorner && i < len - 1) {
+        if (currentCoordinate && nextCoordinate && nextNormal && isSharpCorner && i < len - 1) {
             const auto nextSegmentLength = util::dist<double>(*currentCoordinate, *nextCoordinate);
             if (nextSegmentLength > 2 * sharpCornerOffset) {
                 GeometryCoordinate newCurrentVertex = *currentCoordinate + convertPoint<int16_t>(util::round(convertPoint<double>(*nextCoordinate - *currentCoordinate) * (sharpCornerOffset / nextSegmentLength)));
